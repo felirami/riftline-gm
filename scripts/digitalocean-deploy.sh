@@ -87,11 +87,22 @@ cat >"$cloud_init" <<YAML
 package_update: true
 packages:
   - docker.io
-  - docker-compose-plugin
   - git
   - sqlite3
 runcmd:
   - systemctl enable --now docker
+  - |
+    arch="$(uname -m)"
+    case "$arch" in
+      x86_64) compose_arch=x86_64 ;;
+      aarch64|arm64) compose_arch=aarch64 ;;
+      *) echo "Unsupported architecture: $arch"; exit 1 ;;
+    esac
+    mkdir -p /usr/local/lib/docker/cli-plugins
+    curl -fsSL "https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-linux-${compose_arch}" \
+      -o /usr/local/lib/docker/cli-plugins/docker-compose
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+    docker compose version
   - mkdir -p /opt/riftline-gm
   - if [ ! -d /opt/riftline-gm/.git ]; then git clone --branch "$BRANCH" --depth 1 "$REPO_URL" /opt/riftline-gm; else cd /opt/riftline-gm && git fetch origin "$BRANCH" && git reset --hard "origin/$BRANCH"; fi
   - |
