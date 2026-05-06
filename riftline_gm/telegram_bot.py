@@ -1228,12 +1228,17 @@ async def send_group_topic_intro(
     report: list[str],
 ) -> None:
     try:
-        await context.bot.send_message(
+        sent = await context.bot.send_message(
             chat_id=chat_id,
             message_thread_id=thread_id,
             text=intro,
             reply_markup=lobby_keyboard() if topic_key == "start" else None,
         )
+        if topic_key != "start":
+            try:
+                await context.bot.pin_chat_message(chat_id=chat_id, message_id=sent.message_id, disable_notification=True)
+            except TelegramError:
+                logger.info("Could not pin intro to topic %s in chat %s", topic_key, chat_id, exc_info=True)
     except TelegramError:
         logger.info("Could not send intro to topic %s in chat %s", topic_key, chat_id, exc_info=True)
         report.append(f"Intro de topic: omitida para {topic_name}.")
