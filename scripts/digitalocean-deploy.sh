@@ -6,6 +6,13 @@ if ! command -v doctl >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
 doctl account get >/dev/null
 
 : "${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in your shell before deploying.}"
