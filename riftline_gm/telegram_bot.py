@@ -1155,8 +1155,11 @@ async def update_group_description(context: ContextTypes.DEFAULT_TYPE, chat_id: 
     try:
         await context.bot.set_chat_description(chat_id=chat_id, description=description)
         report.append("Descripción: actualizada.")
-    except TelegramError:
-        logger.info("Could not update chat description for chat %s", chat_id, exc_info=True)
+    except TelegramError as exc:
+        if "not modified" in str(exc).lower():
+            report.append("Descripción: ya estaba actualizada.")
+            return
+        logger.info("Could not update chat description for chat %s: %s", chat_id, exc)
         report.append("Descripción: omitida. Da permiso de Cambiar info si quieres que el bot la maneje.")
 
 
@@ -1237,8 +1240,9 @@ async def send_group_topic_intro(
         if topic_key != "start":
             try:
                 await context.bot.pin_chat_message(chat_id=chat_id, message_id=sent.message_id, disable_notification=True)
-            except TelegramError:
-                logger.info("Could not pin intro to topic %s in chat %s", topic_key, chat_id, exc_info=True)
+            except TelegramError as exc:
+                logger.info("Could not pin intro to topic %s in chat %s: %s", topic_key, chat_id, exc)
+                report.append(f"Guía fijada en {topic_name}: omitida.")
     except TelegramError:
         logger.info("Could not send intro to topic %s in chat %s", topic_key, chat_id, exc_info=True)
         report.append(f"Intro de topic: omitida para {topic_name}.")
