@@ -92,6 +92,7 @@ GROUP_COMMANDS: tuple[BotCommand, ...] = (
     BotCommand("summary", "Ver resumen de campaña"),
     BotCommand("settings", "Ver ajustes de campaña"),
     BotCommand("setup_group", "Admin: preparar la UX del grupo"),
+    BotCommand("diagnostics", "Admin: probar permisos e integraciones"),
 )
 
 
@@ -108,6 +109,7 @@ def build_application(config: Config, store: Store, openrouter: OpenRouterClient
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("setup_group", setup_group))
+    application.add_handler(CommandHandler("diagnostics", diagnostics))
     application.add_handler(CommandHandler("session_start", session_start))
     application.add_handler(CommandHandler("session_pause", session_pause))
     application.add_handler(CommandHandler("join", join))
@@ -194,6 +196,57 @@ async def setup_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         format_setup_report(report, ready_topics),
         reply_markup=lobby_keyboard(),
     )
+
+
+async def diagnostics(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await require_admin(update, context):
+        return
+    config, store, openrouter = deps(context)
+    campaign = ensure_campaign(update, context)
+    chat = update.effective_chat
+    if chat.type == "private":
+        await update.effective_message.reply_text("Corre /diagnostics dentro del grupo para probar permisos reales.")
+        return
+
+    report: list[str] = ["Diagnóstico Riftline GM"]
+    report.append(f"Chat: {chat.title or chat.id}")
+    report.append(f"Perfil: {profile_or_default(campaign.game_profile).label}")
+    report.append(f"Idioma: {language_label(campaign.language)}")
+    report.append(f"Sesión: {'activa' if campaign.active else 'pausada'}")
+    await add_bot_permission_report(context, campaign.chat_id, report)
+
+    report.append("SQLite: ok" if store.healthcheck() else "SQLite: falló")
+    await install_group_commands(context, campaign.chat_id, report)
+
+    await run_topic_diagnostic(context, campaign.chat_id, chat, report)
+
+    try:
+        result = await openrouter.chat(
+            [
+                {"role": "system", "content": "Responde exactamente: OK"},
+                {"role": "user", "content": "diagnóstico"},
+            ],
+            model=campaign.text_model or config.openrouter_text_model,
+            max_tokens=12,
+            temperature=0,
+        )
+        store.add_cost_log(
+            chat_id=campaign.chat_id,
+            model=result.model,
+            kind="diagnostics",
+            prompt_tokens=result.prompt_tokens,
+            completion_tokens=result.completion_tokens,
+            total_cost=result.total_cost,
+        )
+        report.append(f"OpenRouter texto: ok ({result.model}).")
+    except Exception:
+        logger.exception("OpenRouter diagnostic failed for chat %s", campaign.chat_id)
+        report.append("OpenRouter texto: falló. Revisa OPENROUTER_API_KEY/modelo.")
+
+    report.append(f"Modelo imagen configurado: {campaign.image_model or config.openrouter_image_model}.")
+    report.append("Privacidad BotFather: Telegram no permite inspeccionarla por API; prueba manual en un topic.")
+    report.append("Prueba humana pendiente: tocar Unirme al crew, Crear personaje, responder en topic, Finalizar.")
+    await update.effective_message.reply_text(format_diagnostics_report(report), reply_markup=lobby_keyboard())
 
 
 async def session_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1156,6 +1209,50 @@ async def ensure_group_topic(
     return topic.message_thread_id
 
 
+async def run_topic_diagnostic(
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    chat,
+    report: list[str],
+) -> None:
+    if chat.type != "supergroup" or not bool(getattr(chat, "is_forum", False)):
+        report.append("Topic temporal: omitido. El chat no expone Topics como forum supergroup.")
+        return
+
+    try:
+        topic = await context.bot.create_forum_topic(chat_id=chat_id, name="Diagnóstico Riftline")
+        report.append("Topic temporal: creado.")
+    except TelegramError:
+        logger.exception("Diagnostic topic create failed for chat %s", chat_id)
+        report.append("Topic temporal: falló. Revisa permiso Gestionar topics.")
+        return
+
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            message_thread_id=topic.message_thread_id,
+            text="Mensaje de prueba del diagnóstico. Si ves esto, el bot puede escribir en topics.",
+        )
+        report.append("Mensaje en topic: ok.")
+    except TelegramError:
+        logger.exception("Diagnostic topic send failed for chat %s", chat_id)
+        report.append("Mensaje en topic: falló.")
+
+    try:
+        await context.bot.delete_forum_topic(chat_id=chat_id, message_thread_id=topic.message_thread_id)
+        report.append("Topic temporal: eliminado.")
+        return
+    except TelegramError:
+        logger.info("Could not delete diagnostic topic in chat %s; trying to close it", chat_id, exc_info=True)
+
+    try:
+        await context.bot.close_forum_topic(chat_id=chat_id, message_thread_id=topic.message_thread_id)
+        report.append("Topic temporal: creado pero no pude eliminarlo; quedó cerrado.")
+    except TelegramError:
+        logger.info("Could not close diagnostic topic in chat %s", chat_id, exc_info=True)
+        report.append("Topic temporal: creado, pero no pude eliminarlo ni cerrarlo.")
+
+
 async def pin_message_if_possible(
     context: ContextTypes.DEFAULT_TYPE,
     chat_id: int,
@@ -1207,6 +1304,10 @@ def format_help_text(campaign: Campaign) -> str:
 def format_setup_report(report: list[str], topics: list[str]) -> str:
     topic_text = ", ".join(topics) if topics else "ninguno"
     return "Setup listo.\n\n" + "\n".join(f"- {line}" for line in report) + f"\n- Topics listos: {topic_text}"
+
+
+def format_diagnostics_report(report: list[str]) -> str:
+    return "\n".join(f"- {line}" for line in report)
 
 
 def ensure_campaign(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Campaign:

@@ -4,7 +4,7 @@ from riftline_gm.i18n import LANGUAGE_OPTIONS
 from riftline_gm.keyboards import help_keyboard, language_keyboard, lobby_keyboard, profile_keyboard
 from riftline_gm.openrouter import OpenRouterClient
 from riftline_gm.profiles import GAME_PROFILES
-from riftline_gm.telegram_bot import callback, parse_sheet_payload
+from riftline_gm.telegram_bot import GROUP_COMMANDS, callback, format_diagnostics_report, parse_sheet_payload
 
 
 def test_parse_sheet_payload_accepts_semicolon_pairs():
@@ -45,6 +45,19 @@ def test_lobby_and_help_keyboards_expose_guided_actions():
     for action in {"menu:join", "menu:character", "roll:d10", "menu:players", "menu:summary", "menu:settings"}:
         assert action in help_data
     assert {"Unirme al crew", "Crear personaje", "Cómo jugar", "Jugadores", "Resumen", "Ajustes"} <= lobby_labels
+
+
+def test_group_commands_include_diagnostics():
+    descriptions = {command.command: command.description for command in GROUP_COMMANDS}
+
+    assert descriptions["diagnostics"] == "Admin: probar permisos e integraciones"
+
+
+def test_format_diagnostics_report_is_scannable():
+    report = format_diagnostics_report(["SQLite: ok", "OpenRouter texto: ok"])
+
+    assert "- SQLite: ok" in report
+    assert "- OpenRouter texto: ok" in report
 
 
 async def test_language_callback_updates_campaign(tmp_path):

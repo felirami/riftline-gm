@@ -87,4 +87,5 @@ def test_group_topics_are_persisted_by_key(tmp_path):
     assert row["message_thread_id"] == 14
     assert row["name"] == "Start Here"
     assert len(store.list_group_topics(-100123)) == 1
+    assert store.healthcheck() is True
     store.close()

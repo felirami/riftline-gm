@@ -151,6 +151,14 @@ Start the table:
 
 It also installs Telegram command suggestions for the group and pins a button-driven guide when the bot has permission.
 
+Smoke-test the live group:
+
+```text
+/diagnostics
+```
+
+`/diagnostics` is admin-only. It checks bot admin permissions, SQLite, group command installation, temporary topic create/send/delete, OpenRouter text inference, and configured image model. Telegram does not expose BotFather privacy mode through the API, so one manual check remains: a real player should tap `Unirme al crew`, tap `Crear personaje`, write in their character topic, and finalize.
+
 Choose a game profile:
 
 ```text

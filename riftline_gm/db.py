@@ -414,6 +414,10 @@ class Store:
             (chat_id,),
         )
 
+    def healthcheck(self) -> bool:
+        row = self._one("SELECT 1 AS ok", ())
+        return bool(row and int(row["ok"]) == 1)
+
     def add_message(self, chat_id: int, *, role: str, content: str, user_id: int | None = None) -> None:
         with self._lock, self._conn:
             self._conn.execute(
