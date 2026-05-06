@@ -6,6 +6,7 @@ from io import BytesIO
 
 from telegram import Update
 from telegram.constants import ChatAction
+from telegram.error import TelegramError
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -16,12 +17,23 @@ from telegram.ext import (
     filters,
 )
 
+from riftline_gm.characters import (
+    append_turn,
+    build_character_messages,
+    draft_to_player_fields,
+    format_character_draft,
+    missing_minimum_fields,
+    new_ai_draft_data,
+    parse_character_ai_response,
+    update_ai_draft_data,
+)
 from riftline_gm.config import Config
 from riftline_gm.db import Store, cooldown_remaining, start_of_utc_day
 from riftline_gm.dice import parse_and_roll
 from riftline_gm.i18n import CONTENT_PRESETS, LANGUAGE_OPTIONS, content_label, language_label
 from riftline_gm.keyboards import (
     content_keyboard,
+    character_topic_keyboard,
     experience_keyboard,
     gm_keyboard,
     image_approval_keyboard,
@@ -31,7 +43,7 @@ from riftline_gm.keyboards import (
     remove_keyboard,
     settings_keyboard,
 )
-from riftline_gm.models import Campaign, Player
+from riftline_gm.models import Campaign, CharacterDraft, Player
 from riftline_gm.openrouter import OpenRouterClient
 from riftline_gm.prompts import build_chat_messages, build_summary_messages
 from riftline_gm.profiles import GAME_PROFILES, profile_or_default
@@ -62,6 +74,7 @@ def build_application(config: Config, store: Store, openrouter: OpenRouterClient
     application.add_handler(CommandHandler("settings", settings))
     application.add_handler(CommandHandler("model", model_settings))
     application.add_handler(CommandHandler("profile", profile_settings))
+    application.add_handler(CommandHandler("character", character))
     application.add_handler(CommandHandler("sheet", sheet))
     application.add_handler(CommandHandler("ping", ping))
     application.add_handler(CallbackQueryHandler(callback))
@@ -125,6 +138,64 @@ async def join(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"{player.display_name} entra al crew. Elige cómo quieres que el GM te guíe.",
         reply_markup=experience_keyboard(user.id),
     )
+
+
+async def character(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    _, store, _ = deps(context)
+    campaign = ensure_campaign(update, context)
+    if update.effective_chat.type == "private":
+        await update.effective_message.reply_text(
+            "La creación de personaje vive en topics del grupo. Vuelve al grupo, activa Topics si hace falta y usa /character ahí."
+        )
+        return
+
+    player = await ensure_player_for_character(update, context)
+    if not player:
+        return
+
+    action = context.args[0].lower() if context.args else "home"
+    if action == "cancel":
+        draft = store.maybe_character_draft(campaign.chat_id, player.user_id)
+        if not draft:
+            await update.effective_message.reply_text("No tienes character draft activo.")
+            return
+        store.cancel_character_draft(campaign.chat_id, player.user_id)
+        if draft.topic_thread_id:
+            await send_character_topic_message(context, draft, "Character draft cancelled.")
+        else:
+            await update.effective_message.reply_text("Character draft cancelled.")
+        return
+
+    restart = action in {"new", "start", "restart"}
+    draft = await get_or_create_character_draft(context, campaign, player, restart=restart)
+    if not draft:
+        return
+    if action in {"finish", "finalize"}:
+        draft = await ensure_character_topic(update, context, campaign, player, draft)
+        if not draft:
+            return
+        await finalize_character(update.effective_message, context, draft)
+        return
+
+    draft = await ensure_character_topic(update, context, campaign, player, draft)
+    if not draft:
+        return
+
+    thread_id = get_message_thread_id(update.effective_message)
+    if thread_id != draft.topic_thread_id:
+        await update.effective_message.reply_text(
+            f"Listo: usa el topic {draft.topic_name} para crear tu character sin llenar el chat principal.",
+        )
+
+    if restart or not draft.data.get("transcript"):
+        await run_character_ai_turn(context, draft, latest_user_text=None)
+    else:
+        await send_character_topic_message(
+            context,
+            draft,
+            f"{format_character_draft(draft, player)}\n\nEscribe en este topic para seguir creando el personaje.",
+            reply_markup=character_topic_keyboard(draft),
+        )
 
 
 async def leave(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -258,6 +329,22 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     chat = update.effective_chat
+    _, store, _ = deps(context)
+
+    if chat.type != "private":
+        campaign = ensure_campaign(update, context)
+        thread_id = get_message_thread_id(message)
+        if thread_id is not None:
+            draft = store.maybe_character_draft_by_topic(campaign.chat_id, thread_id)
+            if draft:
+                if update.effective_user.id == draft.user_id:
+                    await run_character_ai_turn(context, draft, latest_user_text=text)
+                elif await should_answer_wrong_topic_user(update, context):
+                    player = store.maybe_player(draft.chat_id, draft.user_id)
+                    owner = player.display_name if player else "otro player"
+                    await message.reply_text(f"Este character topic es de {owner}. Usa /character para abrir el tuyo.")
+                return
+
     bot = context.bot
     username = (bot.username or "").lower()
     is_private = chat.type == "private"
@@ -268,6 +355,7 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     if username:
         text = text.replace(f"@{bot.username}", "").strip()
+
     await process_gm_text(update, context, text)
 
 
@@ -360,6 +448,9 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 f"Listo. Modo: {'nuevo player' if mode == 'newbie' else 'experienced'}.\n{sheet_help_text()}"
             )
             return
+        if data.startswith("char:"):
+            await handle_character_callback(update, context, data)
+            return
         if data.startswith("sheet_help:"):
             await query.answer()
             target_user_id = int(data.split(":", 1)[1])
@@ -411,6 +502,268 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception:
         logger.exception("Callback failed: %s", data)
         await query.message.reply_text("Algo falló procesando ese botón. Revisa logs.")
+
+
+async def handle_character_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str) -> None:
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    _, store, _ = deps(context)
+    campaign = ensure_campaign(update, context)
+    parts = data.split(":", 3)
+    action = parts[1] if len(parts) > 1 else ""
+    target_user_id = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else query.from_user.id
+    if query.from_user.id != target_user_id:
+        await query.answer("Ese botón es personal.", show_alert=True)
+        return
+
+    player = store.maybe_player(campaign.chat_id, target_user_id)
+    if not player or not player.active:
+        await query.answer("Primero entra con /join.", show_alert=True)
+        return
+
+    draft = store.maybe_character_draft(campaign.chat_id, target_user_id)
+    if not draft or action == "start":
+        draft = await get_or_create_character_draft(context, campaign, player, restart=action == "start")
+        if not draft:
+            return
+
+    if action in {"start", "continue"}:
+        draft = await ensure_character_topic(update, context, campaign, player, draft)
+        if not draft:
+            return
+        if get_message_thread_id(query.message) != draft.topic_thread_id:
+            await query.message.reply_text(f"Listo: abrí el topic {draft.topic_name} para tu personaje.")
+        await run_character_ai_turn(context, draft, latest_user_text=None)
+        return
+    if action in {"home", "summary"}:
+        draft = await ensure_character_topic(update, context, campaign, player, draft)
+        if not draft:
+            return
+        await send_character_topic_message(
+            context,
+            draft,
+            format_character_draft(draft, player),
+            reply_markup=character_topic_keyboard(draft),
+        )
+        return
+    if action == "finish":
+        await finalize_character(query.message, context, draft)
+        return
+    if action == "cancel":
+        store.cancel_character_draft(campaign.chat_id, target_user_id)
+        if draft.topic_thread_id:
+            await send_character_topic_message(context, draft, "Character draft cancelled.")
+        else:
+            await query.message.reply_text("Character draft cancelled.")
+        return
+
+    await query.answer("No reconozco ese botón.", show_alert=True)
+
+
+async def finalize_character(message, context: ContextTypes.DEFAULT_TYPE, draft: CharacterDraft) -> None:
+    _, store, _ = deps(context)
+    missing = missing_minimum_fields(draft.data.get("sheet", {}))
+    if missing:
+        await send_character_topic_message(
+            context,
+            draft,
+            "Todavía faltan estos detalles base antes de cerrar: "
+            + ", ".join(missing)
+            + ". Responde en este topic y el GM te guía.",
+            reply_markup=character_topic_keyboard(draft),
+        )
+        return
+
+    fields = draft_to_player_fields(draft)
+    if not fields:
+        await send_character_topic_message(context, draft, "The draft is empty. Use /character start to begin.")
+        return
+    player = store.update_player_sheet(draft.chat_id, draft.user_id, **fields)
+    store.cancel_character_draft(draft.chat_id, draft.user_id)
+    await send_character_topic_message(
+        context,
+        draft,
+        "Character finalized and saved to your light sheet.\n\n"
+        f"{format_player(player)}\n\nUse /sheet anytime to patch details manually."
+    )
+
+
+async def get_or_create_character_draft(
+    context: ContextTypes.DEFAULT_TYPE,
+    campaign: Campaign,
+    player: Player,
+    *,
+    restart: bool = False,
+) -> CharacterDraft | None:
+    _, store, _ = deps(context)
+    draft = store.maybe_character_draft(campaign.chat_id, player.user_id)
+    if draft and not restart:
+        return draft
+
+    return store.upsert_character_draft(
+        chat_id=campaign.chat_id,
+        user_id=player.user_id,
+        game_profile=campaign.game_profile,
+        current_field="ai",
+        data=new_ai_draft_data(player),
+        active=True,
+    )
+
+
+async def ensure_character_topic(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    campaign: Campaign,
+    player: Player,
+    draft: CharacterDraft,
+) -> CharacterDraft | None:
+    if draft.topic_thread_id:
+        return draft
+
+    message = update.callback_query.message if update.callback_query else update.effective_message
+    chat = update.effective_chat
+    if chat.type != "supergroup":
+        await message.reply_text(
+            "Para usar subchannels de personaje, el grupo tiene que ser un supergroup de Telegram con Topics activados."
+        )
+        return None
+    if getattr(chat, "is_forum", None) is False:
+        await message.reply_text(
+            "Este grupo todavía no tiene Topics activados. Actívalos en la configuración del grupo y dame permiso para gestionar topics."
+        )
+        return None
+
+    _, store, _ = deps(context)
+    topic_name = character_topic_name(player)
+    try:
+        topic = await context.bot.create_forum_topic(chat_id=campaign.chat_id, name=topic_name)
+    except TelegramError:
+        logger.exception("Failed to create character topic for chat=%s user=%s", campaign.chat_id, player.user_id)
+        await message.reply_text(
+            "No pude crear el topic de personaje. Revisa que el grupo tenga Topics activos y que el bot sea admin con permiso para gestionar topics."
+        )
+        return None
+
+    draft = store.update_character_draft(
+        campaign.chat_id,
+        player.user_id,
+        current_field="ai",
+        topic_thread_id=topic.message_thread_id,
+        topic_name=topic.name or topic_name,
+        data=draft.data,
+    )
+    await send_character_topic_message(
+        context,
+        draft,
+        f"{player.display_name}, este es tu character topic. Escribe aquí y el GM te ayuda a crear la ficha sin llenar el chat principal.",
+        reply_markup=character_topic_keyboard(draft),
+    )
+    return draft
+
+
+async def run_character_ai_turn(
+    context: ContextTypes.DEFAULT_TYPE,
+    draft: CharacterDraft,
+    *,
+    latest_user_text: str | None,
+) -> None:
+    config, store, openrouter = deps(context)
+    campaign = store.get_campaign(draft.chat_id)
+    player = store.maybe_player(draft.chat_id, draft.user_id)
+    if not player or not player.active:
+        await send_character_topic_message(context, draft, "Primero entra al crew con /join.")
+        return
+
+    data = dict(draft.data or new_ai_draft_data(player))
+    if latest_user_text:
+        data = append_turn(data, role="user", content=latest_user_text)
+        draft = store.update_character_draft(draft.chat_id, draft.user_id, current_field="ai", data=data)
+
+    try:
+        await context.bot.send_chat_action(
+            chat_id=draft.chat_id,
+            action=ChatAction.TYPING,
+            message_thread_id=draft.topic_thread_id,
+        )
+        messages = build_character_messages(
+            campaign=campaign,
+            player=player,
+            draft=draft,
+            latest_user_text=latest_user_text,
+        )
+        result = await openrouter.chat(
+            messages,
+            model=campaign.text_model or config.openrouter_text_model,
+            max_tokens=800,
+            temperature=0.7,
+        )
+    except Exception:
+        logger.exception("Character AI turn failed for chat=%s user=%s", draft.chat_id, draft.user_id)
+        await send_character_topic_message(
+            context,
+            draft,
+            "Se me cortó la señal con el modelo. Tu draft sigue guardado; prueba otra vez en un momento.",
+            reply_markup=character_topic_keyboard(draft),
+        )
+        return
+
+    ai_payload = parse_character_ai_response(result.text, draft.data.get("sheet", {}))
+    updated_data = update_ai_draft_data(data, ai_payload)
+    draft = store.update_character_draft(draft.chat_id, draft.user_id, current_field="ai", data=updated_data)
+    store.add_cost_log(
+        chat_id=draft.chat_id,
+        model=result.model,
+        kind="character",
+        prompt_tokens=result.prompt_tokens,
+        completion_tokens=result.completion_tokens,
+        total_cost=result.total_cost,
+    )
+
+    reply = ai_payload["message"]
+    if ai_payload["ready"]:
+        reply = f"{reply}\n\n{format_character_draft(draft, player)}"
+    await send_character_topic_message(context, draft, reply, reply_markup=character_topic_keyboard(draft))
+
+
+async def send_character_topic_message(
+    context: ContextTypes.DEFAULT_TYPE,
+    draft: CharacterDraft,
+    text: str,
+    *,
+    reply_markup=None,
+) -> None:
+    await context.bot.send_message(
+        chat_id=draft.chat_id,
+        message_thread_id=draft.topic_thread_id,
+        text=text,
+        reply_markup=reply_markup,
+    )
+
+
+async def should_answer_wrong_topic_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    message = update.effective_message
+    bot = context.bot
+    username = (bot.username or "").lower()
+    is_reply_to_bot = bool(
+        message.reply_to_message
+        and message.reply_to_message.from_user
+        and message.reply_to_message.from_user.id == bot.id
+    )
+    is_mention = bool(username and f"@{username}" in (message.text or "").lower())
+    return is_reply_to_bot or is_mention
+
+
+def get_message_thread_id(message) -> int | None:
+    return getattr(message, "message_thread_id", None)
+
+
+def character_topic_name(player: Player) -> str:
+    name = (player.handle or player.display_name or str(player.user_id)).replace("\n", " ").strip()
+    if not name:
+        name = str(player.user_id)
+    return f"PJ - {name}"[:120]
 
 
 async def process_gm_text(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
@@ -584,6 +937,26 @@ def ensure_campaign(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Campa
         default_game_profile=config.default_game_profile,
         default_language=config.default_language,
         content_preset=config.content_preset,
+    )
+
+
+async def ensure_player_for_character(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Player | None:
+    config, store, _ = deps(context)
+    campaign = ensure_campaign(update, context)
+    user = update.effective_user
+    player = store.maybe_player(campaign.chat_id, user.id)
+    if player and player.active:
+        return player
+
+    if store.count_active_players(campaign.chat_id) >= config.max_players:
+        await update.effective_message.reply_text(f"La mesa ya tiene el máximo configurado: {config.max_players} players.")
+        return None
+
+    return store.upsert_player(
+        chat_id=campaign.chat_id,
+        user_id=user.id,
+        username=user.username,
+        display_name=user.full_name or user.username or str(user.id),
     )
 
 

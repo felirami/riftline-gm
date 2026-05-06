@@ -42,3 +42,34 @@ def test_campaign_player_and_image_persistence(tmp_path):
     assert store.count_generated_images_since(123, datetime.now(UTC) - timedelta(days=1)) == 1
 
     store.close()
+
+
+def test_character_draft_persists_for_forum_topic(tmp_path):
+    store = Store(tmp_path / "bot.sqlite")
+    store.init_schema()
+
+    draft = store.upsert_character_draft(
+        chat_id=-100123,
+        user_id=55,
+        game_profile="cyberpunk_2077",
+        current_field="ai",
+        topic_thread_id=88,
+        topic_name="PJ - Hex",
+        data={"sheet": {"handle": "Hex"}},
+        active=True,
+    )
+
+    assert draft.topic_thread_id == 88
+    assert draft.topic_name == "PJ - Hex"
+    assert store.maybe_character_draft_by_topic(-100123, 88) == draft
+
+    updated = store.update_character_draft(
+        -100123,
+        55,
+        current_field="ai",
+        data={"sheet": {"handle": "Hex", "role": "netrunner"}},
+    )
+
+    assert updated.topic_thread_id == 88
+    assert updated.data["sheet"]["role"] == "netrunner"
+    store.close()

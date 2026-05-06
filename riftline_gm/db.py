@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 
-from riftline_gm.models import Campaign, ImageRequest, Player
+from riftline_gm.models import Campaign, CharacterDraft, ImageRequest, Player
 
 
 def utc_now() -> str:
@@ -105,11 +105,27 @@ class Store:
                     total_cost REAL NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS character_drafts (
+                    chat_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    game_profile TEXT NOT NULL,
+                    current_field TEXT,
+                    topic_thread_id INTEGER,
+                    topic_name TEXT,
+                    data_json TEXT NOT NULL DEFAULT '{}',
+                    active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (chat_id, user_id)
+                );
                 """
             )
             self._ensure_column("campaigns", "game_profile", "TEXT NOT NULL DEFAULT 'cyberpunk_2077'")
             self._ensure_column("campaigns", "text_model", "TEXT")
             self._ensure_column("campaigns", "image_model", "TEXT")
+            self._ensure_column("character_drafts", "topic_thread_id", "INTEGER")
+            self._ensure_column("character_drafts", "topic_name", "TEXT")
 
     def _ensure_column(self, table: str, column: str, column_type: str) -> None:
         columns = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})")}
@@ -244,6 +260,121 @@ class Store:
         with self._lock, self._conn:
             self._conn.execute(f"UPDATE players SET {columns} WHERE chat_id = ? AND user_id = ?", values)
         return self.get_player(chat_id, user_id)
+
+    def upsert_character_draft(
+        self,
+        *,
+        chat_id: int,
+        user_id: int,
+        game_profile: str,
+        current_field: str | None,
+        topic_thread_id: int | None = None,
+        topic_name: str | None = None,
+        data: dict[str, Any] | None = None,
+        active: bool = True,
+    ) -> CharacterDraft:
+        now = utc_now()
+        data_json = json.dumps(data or {}, ensure_ascii=False, sort_keys=True)
+        with self._lock, self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO character_drafts
+                (chat_id, user_id, game_profile, current_field, topic_thread_id, topic_name, data_json, active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                    game_profile = excluded.game_profile,
+                    current_field = excluded.current_field,
+                    topic_thread_id = COALESCE(excluded.topic_thread_id, character_drafts.topic_thread_id),
+                    topic_name = COALESCE(excluded.topic_name, character_drafts.topic_name),
+                    data_json = excluded.data_json,
+                    active = excluded.active,
+                    updated_at = excluded.updated_at
+                """,
+                (chat_id, user_id, game_profile, current_field, topic_thread_id, topic_name, data_json, int(active), now, now),
+            )
+        return self.get_character_draft(chat_id, user_id)
+
+    def get_character_draft(self, chat_id: int, user_id: int) -> CharacterDraft:
+        row = self._one("SELECT * FROM character_drafts WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
+        if row is None:
+            raise KeyError(f"No character draft for player {user_id} in chat {chat_id}")
+        return _character_draft(row)
+
+    def maybe_character_draft(self, chat_id: int, user_id: int, *, active_only: bool = True) -> CharacterDraft | None:
+        if active_only:
+            row = self._one(
+                "SELECT * FROM character_drafts WHERE chat_id = ? AND user_id = ? AND active = 1",
+                (chat_id, user_id),
+            )
+        else:
+            row = self._one("SELECT * FROM character_drafts WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
+        return _character_draft(row) if row else None
+
+    def maybe_character_draft_by_topic(
+        self,
+        chat_id: int,
+        topic_thread_id: int,
+        *,
+        active_only: bool = True,
+    ) -> CharacterDraft | None:
+        if active_only:
+            row = self._one(
+                """
+                SELECT * FROM character_drafts
+                WHERE chat_id = ? AND topic_thread_id = ? AND active = 1
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (chat_id, topic_thread_id),
+            )
+        else:
+            row = self._one(
+                """
+                SELECT * FROM character_drafts
+                WHERE chat_id = ? AND topic_thread_id = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (chat_id, topic_thread_id),
+            )
+        return _character_draft(row) if row else None
+
+    def update_character_draft(
+        self,
+        chat_id: int,
+        user_id: int,
+        *,
+        current_field: str | None = None,
+        topic_thread_id: int | None = None,
+        topic_name: str | None = None,
+        data: dict[str, Any] | None = None,
+        active: bool | None = None,
+    ) -> CharacterDraft:
+        draft = self.get_character_draft(chat_id, user_id)
+        merged_data = draft.data if data is None else data
+        updates: dict[str, Any] = {
+            "current_field": current_field,
+            "data_json": json.dumps(merged_data, ensure_ascii=False, sort_keys=True),
+            "updated_at": utc_now(),
+        }
+        if active is not None:
+            updates["active"] = int(active)
+        if topic_thread_id is not None:
+            updates["topic_thread_id"] = topic_thread_id
+        if topic_name is not None:
+            updates["topic_name"] = topic_name
+        columns = ", ".join(f"{key} = ?" for key in updates)
+        values = list(updates.values()) + [chat_id, user_id]
+        with self._lock, self._conn:
+            self._conn.execute(f"UPDATE character_drafts SET {columns} WHERE chat_id = ? AND user_id = ?", values)
+        return self.get_character_draft(chat_id, user_id)
+
+    def cancel_character_draft(self, chat_id: int, user_id: int) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE character_drafts SET active = 0, current_field = NULL, updated_at = ? WHERE chat_id = ? AND user_id = ?",
+                (utc_now(), chat_id, user_id),
+            )
 
     def add_message(self, chat_id: int, *, role: str, content: str, user_id: int | None = None) -> None:
         with self._lock, self._conn:
@@ -407,6 +538,23 @@ def _image_request(row: sqlite3.Row) -> ImageRequest:
         drafted_prompt=str(row["drafted_prompt"]),
         status=str(row["status"]),
         image_url=row["image_url"],
+    )
+
+
+def _character_draft(row: sqlite3.Row) -> CharacterDraft:
+    try:
+        data = json.loads(row["data_json"] or "{}")
+    except json.JSONDecodeError:
+        data = {}
+    return CharacterDraft(
+        chat_id=int(row["chat_id"]),
+        user_id=int(row["user_id"]),
+        game_profile=str(row["game_profile"]),
+        current_field=row["current_field"],
+        topic_thread_id=int(row["topic_thread_id"]) if row["topic_thread_id"] is not None else None,
+        topic_name=row["topic_name"],
+        data=data,
+        active=bool(row["active"]),
     )
 
 

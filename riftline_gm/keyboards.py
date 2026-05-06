@@ -3,7 +3,7 @@ from __future__ import annotations
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 from riftline_gm.i18n import CONTENT_PRESETS, LANGUAGE_OPTIONS
-from riftline_gm.models import Campaign, ImageRequest
+from riftline_gm.models import Campaign, CharacterDraft, ImageRequest
 from riftline_gm.profiles import GAME_PROFILES, profile_or_default
 
 
@@ -11,6 +11,7 @@ def quick_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
             ["/gm", "/roll d10"],
+            ["/character", "/sheet"],
             ["/players", "/summary"],
             ["/image", "/settings"],
         ],
@@ -69,7 +70,10 @@ def experience_keyboard(user_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton("New player", callback_data=f"xp:{user_id}:newbie"),
                 InlineKeyboardButton("Experienced", callback_data=f"xp:{user_id}:experienced"),
             ],
-            [InlineKeyboardButton("Sheet help", callback_data=f"sheet_help:{user_id}")],
+            [
+                InlineKeyboardButton("Create character", callback_data=f"char:start:{user_id}"),
+                InlineKeyboardButton("Sheet help", callback_data=f"sheet_help:{user_id}"),
+            ],
         ]
     )
 
@@ -99,5 +103,20 @@ def image_approval_keyboard(image_request: ImageRequest) -> InlineKeyboardMarkup
                 InlineKeyboardButton("Generate image", callback_data=f"image:approve:{image_request.id}"),
                 InlineKeyboardButton("Cancel", callback_data=f"image:cancel:{image_request.id}"),
             ]
+        ]
+    )
+
+
+def character_topic_keyboard(draft: CharacterDraft) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Ask next", callback_data=f"char:continue:{draft.user_id}"),
+                InlineKeyboardButton("Show draft", callback_data=f"char:summary:{draft.user_id}"),
+            ],
+            [
+                InlineKeyboardButton("Finalize", callback_data=f"char:finish:{draft.user_id}"),
+                InlineKeyboardButton("Cancel", callback_data=f"char:cancel:{draft.user_id}"),
+            ],
         ]
     )

@@ -49,4 +49,16 @@ class ImageRequest:
     image_url: str | None
 
 
+@dataclass(frozen=True)
+class CharacterDraft:
+    chat_id: int
+    user_id: int
+    game_profile: str
+    current_field: str | None
+    topic_thread_id: int | None
+    topic_name: str | None
+    data: dict[str, Any]
+    active: bool
+
+
 JSONDict = dict[str, Any]

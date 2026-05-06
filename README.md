@@ -18,7 +18,8 @@ Riftline GM does not include copyrighted rulebook text, stat tables, missions, s
   - Español España full translation
 - Default mode: `cyberpunk_2077`, LatAm Spanish, and profile-specific terms like `netrunner`, `cyberpsychosis`, `corpo`, `fixer`, `edgerunner`, and `ripperdoc` kept in English.
 - Adaptive player guidance: each player chooses new-player or experienced mode.
-- Light character sheets with `/sheet`.
+- AI-guided character creation in Telegram forum topics: one character topic per player, keeping the main chat clean.
+- Light character sheets with `/sheet`, plus `/character` to create one from scratch.
 - Admin-only session settings and image generation approval.
 - SQLite persistence in `./data/bot.sqlite`.
 
@@ -36,9 +37,10 @@ OpenRouter image generation uses `/api/v1/chat/completions` with `modalities: ["
 
 1. Create a bot with BotFather and put the token in `.env` as `TELEGRAM_BOT_TOKEN`.
 2. Add the bot to your Telegram group.
-3. Keep BotFather privacy mode enabled if you only want commands, replies, and mentions.
-4. Disable privacy mode if you want the bot to receive all group text later. Riftline GM defaults to session-scoped command/reply/mention handling, so privacy mode can stay enabled.
-5. Make the bot a group admin if you want it to reliably check admin permissions.
+3. For normal GM play, privacy mode can stay enabled if you only want commands, replies, and mentions.
+4. For natural character-topic chat, disable privacy mode so the bot receives normal text inside each player's topic.
+5. Enable Topics in the Telegram group and make the bot an admin with permission to manage topics if you want `/character` to create per-player character channels.
+6. Make the bot a group admin if you want it to reliably check admin permissions.
 
 ## Local Setup
 
@@ -149,6 +151,14 @@ Players join:
 ```text
 /join
 ```
+
+Create a character without filling the main chat:
+
+```text
+/character
+```
+
+Riftline GM creates a forum topic named like `PJ - Maria`. The player talks naturally in that topic and the AI guides the sheet from scratch without hardcoded classes or official rulebook data. Use the topic buttons for `Ask next`, `Show draft`, `Finalize`, and `Cancel`. If BotFather privacy mode is still enabled, players should reply to the bot or mention it in the topic; disabling privacy mode gives the smoothest flow.
 
 Talk to the GM:
 
