@@ -1,7 +1,7 @@
 from riftline_gm.config import Config
 from riftline_gm.db import Store
 from riftline_gm.i18n import LANGUAGE_OPTIONS
-from riftline_gm.keyboards import language_keyboard, profile_keyboard
+from riftline_gm.keyboards import help_keyboard, language_keyboard, lobby_keyboard, profile_keyboard
 from riftline_gm.openrouter import OpenRouterClient
 from riftline_gm.profiles import GAME_PROFILES
 from riftline_gm.telegram_bot import callback, parse_sheet_payload
@@ -31,6 +31,16 @@ def test_profile_keyboard_contains_all_profiles():
     callback_data = {button.callback_data for row in markup.inline_keyboard for button in row}
 
     assert callback_data == {f"profile:{key}" for key in GAME_PROFILES}
+
+
+def test_lobby_and_help_keyboards_expose_guided_actions():
+    lobby_data = {button.callback_data for row in lobby_keyboard().inline_keyboard for button in row}
+    help_data = {button.callback_data for row in help_keyboard().inline_keyboard for button in row}
+
+    for action in {"menu:join", "menu:character", "menu:help", "menu:players", "menu:summary", "menu:settings"}:
+        assert action in lobby_data
+    for action in {"menu:join", "menu:character", "roll:d10", "menu:players", "menu:summary", "menu:settings"}:
+        assert action in help_data
 
 
 async def test_language_callback_updates_campaign(tmp_path):

@@ -119,6 +119,16 @@ class Store:
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY (chat_id, user_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS group_topics (
+                    chat_id INTEGER NOT NULL,
+                    topic_key TEXT NOT NULL,
+                    message_thread_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (chat_id, topic_key)
+                );
                 """
             )
             self._ensure_column("campaigns", "game_profile", "TEXT NOT NULL DEFAULT 'cyberpunk_2077'")
@@ -375,6 +385,34 @@ class Store:
                 "UPDATE character_drafts SET active = 0, current_field = NULL, updated_at = ? WHERE chat_id = ? AND user_id = ?",
                 (utc_now(), chat_id, user_id),
             )
+
+    def upsert_group_topic(self, chat_id: int, *, topic_key: str, message_thread_id: int, name: str) -> None:
+        now = utc_now()
+        with self._lock, self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO group_topics
+                (chat_id, topic_key, message_thread_id, name, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(chat_id, topic_key) DO UPDATE SET
+                    message_thread_id = excluded.message_thread_id,
+                    name = excluded.name,
+                    updated_at = excluded.updated_at
+                """,
+                (chat_id, topic_key, message_thread_id, name, now, now),
+            )
+
+    def get_group_topic(self, chat_id: int, topic_key: str) -> sqlite3.Row | None:
+        return self._one(
+            "SELECT * FROM group_topics WHERE chat_id = ? AND topic_key = ?",
+            (chat_id, topic_key),
+        )
+
+    def list_group_topics(self, chat_id: int) -> list[sqlite3.Row]:
+        return self._all(
+            "SELECT * FROM group_topics WHERE chat_id = ? ORDER BY topic_key COLLATE NOCASE",
+            (chat_id,),
+        )
 
     def add_message(self, chat_id: int, *, role: str, content: str, user_id: int | None = None) -> None:
         with self._lock, self._conn:

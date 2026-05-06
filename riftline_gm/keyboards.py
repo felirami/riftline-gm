@@ -10,6 +10,7 @@ from riftline_gm.profiles import GAME_PROFILES, profile_or_default
 def quick_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
+            ["/help", "/join"],
             ["/gm", "/roll d10"],
             ["/character", "/sheet"],
             ["/players", "/summary"],
@@ -59,6 +60,44 @@ def settings_keyboard(campaign: Campaign) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(f"Language: {LANGUAGE_OPTIONS[campaign.language]['label']}", callback_data="menu:language")],
             [InlineKeyboardButton(f"Tone: {CONTENT_PRESETS[campaign.content_preset]['label']}", callback_data="menu:content")],
             [InlineKeyboardButton("Pause session", callback_data="admin:pause")],
+        ]
+    )
+
+
+def lobby_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Join crew", callback_data="menu:join"),
+                InlineKeyboardButton("Create character", callback_data="menu:character"),
+            ],
+            [
+                InlineKeyboardButton("How to play", callback_data="menu:help"),
+                InlineKeyboardButton("Players", callback_data="menu:players"),
+            ],
+            [
+                InlineKeyboardButton("Summary", callback_data="menu:summary"),
+                InlineKeyboardButton("Settings", callback_data="menu:settings"),
+            ],
+        ]
+    )
+
+
+def help_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Join crew", callback_data="menu:join"),
+                InlineKeyboardButton("Create character", callback_data="menu:character"),
+            ],
+            [
+                InlineKeyboardButton("Roll d10", callback_data="roll:d10"),
+                InlineKeyboardButton("Players", callback_data="menu:players"),
+            ],
+            [
+                InlineKeyboardButton("Summary", callback_data="menu:summary"),
+                InlineKeyboardButton("Settings", callback_data="menu:settings"),
+            ],
         ]
     )
 

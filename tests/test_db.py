@@ -73,3 +73,18 @@ def test_character_draft_persists_for_forum_topic(tmp_path):
     assert updated.topic_thread_id == 88
     assert updated.data["sheet"]["role"] == "netrunner"
     store.close()
+
+
+def test_group_topics_are_persisted_by_key(tmp_path):
+    store = Store(tmp_path / "bot.sqlite")
+    store.init_schema()
+
+    store.upsert_group_topic(-100123, topic_key="start", message_thread_id=12, name="Start Here")
+    store.upsert_group_topic(-100123, topic_key="start", message_thread_id=14, name="Start Here")
+
+    row = store.get_group_topic(-100123, "start")
+    assert row is not None
+    assert row["message_thread_id"] == 14
+    assert row["name"] == "Start Here"
+    assert len(store.list_group_topics(-100123)) == 1
+    store.close()
