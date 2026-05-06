@@ -34,13 +34,17 @@ def test_profile_keyboard_contains_all_profiles():
 
 
 def test_lobby_and_help_keyboards_expose_guided_actions():
-    lobby_data = {button.callback_data for row in lobby_keyboard().inline_keyboard for button in row}
-    help_data = {button.callback_data for row in help_keyboard().inline_keyboard for button in row}
+    lobby_buttons = [button for row in lobby_keyboard().inline_keyboard for button in row]
+    help_buttons = [button for row in help_keyboard().inline_keyboard for button in row]
+    lobby_data = {button.callback_data for button in lobby_buttons}
+    help_data = {button.callback_data for button in help_buttons}
+    lobby_labels = {button.text for button in lobby_buttons}
 
     for action in {"menu:join", "menu:character", "menu:help", "menu:players", "menu:summary", "menu:settings"}:
         assert action in lobby_data
     for action in {"menu:join", "menu:character", "roll:d10", "menu:players", "menu:summary", "menu:settings"}:
         assert action in help_data
+    assert {"Unirme al crew", "Crear personaje", "Cómo jugar", "Jugadores", "Resumen", "Ajustes"} <= lobby_labels
 
 
 async def test_language_callback_updates_campaign(tmp_path):

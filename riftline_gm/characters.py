@@ -10,6 +10,20 @@ from riftline_gm.profiles import profile_or_default
 
 
 MINIMUM_FIELDS = ("handle", "concept", "role")
+FIELD_LABELS_ES = {
+    "handle": "nombre",
+    "concept": "concepto",
+    "role": "rol",
+    "style": "estilo",
+    "strengths": "fortalezas",
+    "skills": "habilidades",
+    "gear": "equipo",
+    "durability": "aguante",
+    "strain": "presión",
+    "special": "especial",
+    "bonds": "vínculos",
+    "notes": "notas",
+}
 
 
 def new_ai_draft_data(player: Player | None = None) -> dict[str, Any]:
@@ -157,31 +171,31 @@ def update_ai_draft_data(data: dict[str, Any], ai_payload: dict[str, Any]) -> di
 
 def format_character_draft(draft: CharacterDraft, player: Player | None = None) -> str:
     sheet = draft.data.get("sheet", {})
-    lines = ["Character draft"]
+    lines = ["Borrador de personaje"]
     for label, key in (
-        ("Name", "handle"),
-        ("Concept", "concept"),
-        ("Role", "role"),
-        ("Look", "style"),
-        ("Strengths", "strengths"),
-        ("Skills", "skills"),
-        ("Gear", "gear"),
-        ("Durability", "durability"),
-        ("Strain", "strain"),
-        ("Special", "special"),
-        ("Bonds", "bonds"),
-        ("Notes", "notes"),
+        ("Nombre", "handle"),
+        ("Concepto", "concept"),
+        ("Rol", "role"),
+        ("Estilo", "style"),
+        ("Fortalezas", "strengths"),
+        ("Habilidades", "skills"),
+        ("Equipo", "gear"),
+        ("Aguante", "durability"),
+        ("Presión", "strain"),
+        ("Especial", "special"),
+        ("Vínculos", "bonds"),
+        ("Notas", "notes"),
     ):
         value = sheet.get(key)
         if value:
             lines.append(f"- {label}: {value}")
     if len(lines) == 1:
-        lines.append(f"- Player: {player.display_name if player else 'unknown'}")
+        lines.append(f"- Jugador: {player.display_name if player else 'desconocido'}")
     missing = draft.data.get("missing") or list(missing_minimum_fields(sheet))
     if missing:
-        lines.append("Missing: " + ", ".join(str(item) for item in missing))
+        lines.append("Falta: " + ", ".join(FIELD_LABELS_ES.get(str(item), str(item)) for item in missing))
     if draft.data.get("ready"):
-        lines.append("Ready to finalize.")
+        lines.append("Listo para finalizar.")
     return "\n".join(lines)
 
 

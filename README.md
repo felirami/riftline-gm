@@ -10,13 +10,13 @@ Riftline GM does not include copyrighted rulebook text, stat tables, missions, s
 
 - Telegram group play with `/session_start`, `/join`, `/gm`, `/roll`, `/image`, `/summary`, `/players`, `/settings`, `/profile`, `/model`, and `/sheet`.
 - Hybrid buttons: persistent quick commands plus inline buttons for profile, language, tone, player mode, rolls, spotlight, and image approval.
-- Admin group concierge with `/setup_group`: installs a clean command menu, creates table topics, posts/pins a Start Here guide, and reports missing bot permissions.
+- Admin group concierge with `/setup_group`: installs a clean command menu, creates table topics, posts/pins an `Inicio` guide, and reports missing bot permissions.
 - Built-in profiles: `cyberpunk_2077`, `generic_fantasy`, `space_opera`, and `modern_horror`.
 - Spanish onboarding:
-  - Español LatAm + English terms
-  - Español España + English terms
-  - Español LatAm full translation
-  - Español España full translation
+  - Español LatAm + términos en inglés
+  - Español España + términos en inglés
+  - Español LatAm + traducción completa
+  - Español España + traducción completa
 - Default mode: `cyberpunk_2077`, LatAm Spanish, and profile-specific terms like `netrunner`, `cyberpsychosis`, `corpo`, `fixer`, `edgerunner`, and `ripperdoc` kept in English.
 - Adaptive player guidance: each player chooses new-player or experienced mode.
 - AI-guided character creation in Telegram forum topics: one character topic per player, keeping the main chat clean.
@@ -143,11 +143,11 @@ Start the table:
 
 `/setup_group` is admin-only. In a topic-enabled supergroup it creates or reuses:
 
-- `Start Here`
-- `Table Chat`
-- `In-Character Play`
-- `Scenes and Images`
-- `Rolls and Rules`
+- `Inicio`
+- `Chat de mesa`
+- `Juego en personaje`
+- `Escenas e imágenes`
+- `Tiradas y reglas`
 
 It also installs Telegram command suggestions for the group and pins a button-driven guide when the bot has permission.
 
@@ -170,7 +170,7 @@ Create a character without filling the main chat:
 /character
 ```
 
-Riftline GM creates a forum topic named like `PJ - Maria`. The player talks naturally in that topic and the AI guides the sheet from scratch without hardcoded classes or official rulebook data. Use the topic buttons for `Ask next`, `Show draft`, `Finalize`, and `Cancel`. If BotFather privacy mode is still enabled, players should reply to the bot or mention it in the topic; disabling privacy mode gives the smoothest flow.
+Riftline GM creates a forum topic named like `PJ - Maria`. The player talks naturally in that topic and the AI guides the sheet from scratch without hardcoded classes or official rulebook data. Use the topic buttons for `Siguiente`, `Ver borrador`, `Finalizar`, and `Cancelar`. If BotFather privacy mode is still enabled, players should reply to the bot or mention it in the topic; disabling privacy mode gives the smoothest flow.
 
 Talk to the GM:
 
@@ -196,7 +196,7 @@ Suggest an image:
 /image el grupo mira una torre corpo bajo lluvia ácida, neones violetas, drones arriba
 ```
 
-Only a Telegram group admin can press `Generate image`.
+Only a Telegram group admin can press `Generar imagen`.
 
 Admin model override:
 

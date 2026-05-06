@@ -18,6 +18,7 @@ from telegram.ext import (
 )
 
 from riftline_gm.characters import (
+    FIELD_LABELS_ES,
     append_turn,
     build_character_messages,
     draft_to_player_fields,
@@ -55,42 +56,42 @@ logger = logging.getLogger(__name__)
 GROUP_TOPIC_TEMPLATES: tuple[tuple[str, str, str], ...] = (
     (
         "start",
-        "Start Here",
-        "Welcome. This is the lobby for the table: join, create your character, check commands, and ask admin-level questions here.",
+        "Inicio",
+        "Bienvenido. Este es el lobby de la mesa: únete, crea tu personaje, revisa comandos y deja preguntas de organización aquí.",
     ),
     (
         "table",
-        "Table Chat",
-        "Use this topic for table talk, scheduling, expectations, and out-of-character coordination.",
+        "Chat de mesa",
+        "Usa este topic para hablar fuera de personaje, coordinar horarios, expectativas y temas de la mesa.",
     ),
     (
         "play",
-        "In-Character Play",
-        "Use this topic for live scenes when the group wants the main action in one place. Mention the bot or use /gm to talk to the GM.",
+        "Juego en personaje",
+        "Usa este topic para escenas en vivo cuando el grupo quiera tener la acción principal en un solo lugar. Menciona al bot o usa /gm para hablar con el GM.",
     ),
     (
         "images",
-        "Scenes and Images",
-        "Use this topic for image requests, scene references, and visual inspiration. Image generation still needs admin approval.",
+        "Escenas e imágenes",
+        "Usa este topic para pedir imágenes, guardar referencias visuales e inspiración de escena. Generar imágenes sigue necesitando aprobación admin.",
     ),
     (
         "rolls",
-        "Rolls and Rules",
-        "Use this topic for dice rolls, light rulings, rules questions, and quick mechanical notes.",
+        "Tiradas y reglas",
+        "Usa este topic para tiradas, rulings rápidos, preguntas de reglas y notas mecánicas.",
     ),
 )
 
 GROUP_COMMANDS: tuple[BotCommand, ...] = (
-    BotCommand("help", "Show the table guide"),
-    BotCommand("join", "Join the active crew"),
-    BotCommand("character", "Create your character in a topic"),
-    BotCommand("gm", "Talk to the GM"),
-    BotCommand("roll", "Roll dice like d10+7"),
-    BotCommand("image", "Suggest an image for admin approval"),
-    BotCommand("players", "Show active players"),
-    BotCommand("summary", "Show the campaign summary"),
-    BotCommand("settings", "Show campaign settings"),
-    BotCommand("setup_group", "Admin: set up the group UX"),
+    BotCommand("help", "Ver guía de la mesa"),
+    BotCommand("join", "Unirte al crew activo"),
+    BotCommand("character", "Crear tu personaje en un topic"),
+    BotCommand("gm", "Hablar con el GM"),
+    BotCommand("roll", "Tirar dados como d10+7"),
+    BotCommand("image", "Sugerir una imagen para aprobación admin"),
+    BotCommand("players", "Ver jugadores activos"),
+    BotCommand("summary", "Ver resumen de campaña"),
+    BotCommand("settings", "Ver ajustes de campaña"),
+    BotCommand("setup_group", "Admin: preparar la UX del grupo"),
 )
 
 
@@ -129,8 +130,8 @@ def build_application(config: Config, store: Store, openrouter: OpenRouterClient
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(
-        "Soy Riftline GM: un bot para dirigir mesas RPG en Telegram. Usa /session_start para abrir campaña, "
-        "/setup_group para preparar la mesa, /join para entrar y /help si alguien se pierde.",
+        "Soy Riftline GM: un bot para dirigir mesas RPG en Telegram. Usa /setup_group para preparar la mesa, "
+        "/session_start para abrir campaña, /join para entrar y /help si alguien se pierde.",
         reply_markup=lobby_keyboard(),
     )
 
@@ -141,7 +142,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         format_help_text(campaign),
         reply_markup=help_keyboard(),
     )
-    await update.effective_message.reply_text("Te dejo también los botones rápidos abajo.", reply_markup=quick_keyboard())
+    await update.effective_message.reply_text("También te dejo los botones rápidos abajo.", reply_markup=quick_keyboard())
 
 
 async def setup_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -154,7 +155,7 @@ async def setup_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.effective_message.reply_text("Esto se corre dentro del grupo, no por DM.")
         return
 
-    report: list[str] = ["Group UX setup"]
+    report: list[str] = ["Preparación de UX del grupo"]
     await add_bot_permission_report(context, campaign.chat_id, report)
     await install_group_commands(context, campaign.chat_id, report)
     await update_group_description(context, campaign.chat_id, report)
@@ -169,7 +170,7 @@ async def setup_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 if topic_key == "start":
                     start_thread_id = thread_id
     else:
-        report.append("Topics: not available yet. Enable Topics in Telegram group settings, then run /setup_group again.")
+        report.append("Topics: todavía no están disponibles. Activa Topics en la configuración del grupo y corre /setup_group otra vez.")
 
     target_thread_id = start_thread_id
     try:
@@ -181,7 +182,7 @@ async def setup_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
     except TelegramError:
         logger.info("Could not send setup guide to start topic in chat %s", campaign.chat_id, exc_info=True)
-        report.append("Start topic guide: failed in topic, sent to General instead.")
+        report.append("Guía de inicio: falló en el topic, la mandé a General.")
         guide = await context.bot.send_message(
             chat_id=campaign.chat_id,
             text=format_lobby_text(campaign),
@@ -202,7 +203,7 @@ async def session_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     campaign = ensure_campaign(update, context)
     campaign = store.update_campaign(campaign.chat_id, active=1)
     await update.effective_message.reply_text(
-        "Sesión abierta. Te dejo los botones rápidos abajo para jugar sin memorizar comandos.",
+        "Sesión abierta. Te dejo botones rápidos abajo para jugar sin memorizar comandos.",
         reply_markup=quick_keyboard(),
     )
     await update.effective_message.reply_text(
@@ -235,7 +236,7 @@ async def join_player(update: Update, context: ContextTypes.DEFAULT_TYPE, messag
     user = update.effective_user
     existing = store.maybe_player(campaign.chat_id, user.id)
     if (not existing or not existing.active) and store.count_active_players(campaign.chat_id) >= config.max_players:
-        await message.reply_text(f"La mesa ya tiene el máximo configurado: {config.max_players} players.")
+        await message.reply_text(f"La mesa ya tiene el máximo configurado: {config.max_players} jugadores.")
         return None
     player = store.upsert_player(
         chat_id=campaign.chat_id,
@@ -267,13 +268,13 @@ async def character(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if action == "cancel":
         draft = store.maybe_character_draft(campaign.chat_id, player.user_id)
         if not draft:
-            await update.effective_message.reply_text("No tienes character draft activo.")
+            await update.effective_message.reply_text("No tienes borrador de personaje activo.")
             return
         store.cancel_character_draft(campaign.chat_id, player.user_id)
         if draft.topic_thread_id:
-            await send_character_topic_message(context, draft, "Character draft cancelled.")
+            await send_character_topic_message(context, draft, "Borrador de personaje cancelado.")
         else:
-            await update.effective_message.reply_text("Character draft cancelled.")
+            await update.effective_message.reply_text("Borrador de personaje cancelado.")
         return
 
     restart = action in {"new", "start", "restart"}
@@ -294,7 +295,7 @@ async def character(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     thread_id = get_message_thread_id(update.effective_message)
     if thread_id != draft.topic_thread_id:
         await update.effective_message.reply_text(
-            f"Listo: usa el topic {draft.topic_name} para crear tu character sin llenar el chat principal.",
+            f"Listo: usa el topic {draft.topic_name} para crear tu personaje sin llenar el chat principal.",
         )
 
     if restart or not draft.data.get("transcript"):
@@ -451,8 +452,8 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     await run_character_ai_turn(context, draft, latest_user_text=text)
                 elif await should_answer_wrong_topic_user(update, context):
                     player = store.maybe_player(draft.chat_id, draft.user_id)
-                    owner = player.display_name if player else "otro player"
-                    await message.reply_text(f"Este character topic es de {owner}. Usa /character para abrir el tuyo.")
+                    owner = player.display_name if player else "otro jugador"
+                    await message.reply_text(f"Este topic de personaje es de {owner}. Usa /character para abrir el tuyo.")
                 return
 
     bot = context.bot
@@ -530,7 +531,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             draft = await ensure_character_topic(update, context, campaign, player, draft)
             if not draft:
                 return
-            await query.message.reply_text(f"Listo: abre el topic {draft.topic_name} para crear tu character.")
+            await query.message.reply_text(f"Listo: abre el topic {draft.topic_name} para crear tu personaje.")
             await run_character_ai_turn(context, draft, latest_user_text=None)
             return
         if data == "menu:settings":
@@ -581,7 +582,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 return
             store.update_player_experience(campaign.chat_id, target_user_id, mode)
             await query.message.reply_text(
-                f"Listo. Modo: {'nuevo player' if mode == 'newbie' else 'experienced'}.\n{sheet_help_text()}"
+                f"Listo. Modo: {'jugador nuevo' if mode == 'newbie' else 'jugador con experiencia'}.\n{sheet_help_text()}"
             )
             return
         if data.startswith("char:"):
@@ -606,15 +607,15 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 await query.answer("Primero entra con /join.", show_alert=True)
                 return
             store.update_campaign(campaign.chat_id, spotlight_user_id=query.from_user.id)
-            await query.message.reply_text(f"Spotlight para {player.handle or player.display_name}.")
+            await query.message.reply_text(f"Turno para {player.handle or player.display_name}.")
             return
         if data == "spotlight:clear":
             await query.answer()
             if campaign.spotlight_user_id in {None, query.from_user.id} or await is_admin(update, context):
                 store.update_campaign(campaign.chat_id, spotlight_user_id=None)
-                await query.message.reply_text("Spotlight liberado.")
+                await query.message.reply_text("Turno liberado.")
             else:
-                await query.answer("Solo el spotlight actual o un admin puede pasarlo.", show_alert=True)
+                await query.answer("Solo quien tiene el turno o un admin puede pasarlo.", show_alert=True)
             return
         if data.startswith("image:approve:"):
             await query.answer()
@@ -637,7 +638,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await query.answer("No reconozco ese botón.", show_alert=True)
     except Exception:
         logger.exception("Callback failed: %s", data)
-        await query.message.reply_text("Algo falló procesando ese botón. Revisa logs.")
+        await query.message.reply_text("Algo falló procesando ese botón. Revisa los logs.")
 
 
 async def handle_character_callback(update: Update, context: ContextTypes.DEFAULT_TYPE, data: str) -> None:
@@ -690,9 +691,9 @@ async def handle_character_callback(update: Update, context: ContextTypes.DEFAUL
     if action == "cancel":
         store.cancel_character_draft(campaign.chat_id, target_user_id)
         if draft.topic_thread_id:
-            await send_character_topic_message(context, draft, "Character draft cancelled.")
+            await send_character_topic_message(context, draft, "Borrador de personaje cancelado.")
         else:
-            await query.message.reply_text("Character draft cancelled.")
+            await query.message.reply_text("Borrador de personaje cancelado.")
         return
 
     await query.answer("No reconozco ese botón.", show_alert=True)
@@ -702,11 +703,12 @@ async def finalize_character(message, context: ContextTypes.DEFAULT_TYPE, draft:
     _, store, _ = deps(context)
     missing = missing_minimum_fields(draft.data.get("sheet", {}))
     if missing:
+        missing_text = ", ".join(FIELD_LABELS_ES.get(str(item), str(item)) for item in missing)
         await send_character_topic_message(
             context,
             draft,
             "Todavía faltan estos detalles base antes de cerrar: "
-            + ", ".join(missing)
+            + missing_text
             + ". Responde en este topic y el GM te guía.",
             reply_markup=character_topic_keyboard(draft),
         )
@@ -714,15 +716,15 @@ async def finalize_character(message, context: ContextTypes.DEFAULT_TYPE, draft:
 
     fields = draft_to_player_fields(draft)
     if not fields:
-        await send_character_topic_message(context, draft, "The draft is empty. Use /character start to begin.")
+        await send_character_topic_message(context, draft, "El borrador está vacío. Usa /character start para empezar.")
         return
     player = store.update_player_sheet(draft.chat_id, draft.user_id, **fields)
     store.cancel_character_draft(draft.chat_id, draft.user_id)
     await send_character_topic_message(
         context,
         draft,
-        "Character finalized and saved to your light sheet.\n\n"
-        f"{format_player(player)}\n\nUse /sheet anytime to patch details manually."
+        "Personaje finalizado y guardado en tu ficha ligera.\n\n"
+        f"{format_player(player)}\n\nUsa /sheet cuando quieras ajustar detalles manualmente."
     )
 
 
@@ -793,7 +795,7 @@ async def ensure_character_topic(
     await send_character_topic_message(
         context,
         draft,
-        f"{player.display_name}, este es tu character topic. Escribe aquí y el GM te ayuda a crear la ficha sin llenar el chat principal.",
+        f"{player.display_name}, este es tu topic de personaje. Escribe aquí y el GM te ayuda a crear la ficha sin llenar el chat principal.",
         reply_markup=character_topic_keyboard(draft),
     )
     return draft
@@ -1070,10 +1072,10 @@ async def maybe_refresh_summary(chat_id: int, context: ContextTypes.DEFAULT_TYPE
 async def install_group_commands(context: ContextTypes.DEFAULT_TYPE, chat_id: int, report: list[str]) -> None:
     try:
         await context.bot.set_my_commands(GROUP_COMMANDS, scope=BotCommandScopeChat(chat_id))
-        report.append("Commands: installed for this group.")
+        report.append("Comandos: menú instalado para este grupo.")
     except TelegramError:
         logger.exception("Failed to install group commands for chat %s", chat_id)
-        report.append("Commands: failed. The bot can still work with typed commands.")
+        report.append("Comandos: falló la instalación. El bot igual funciona con comandos escritos.")
 
 
 async def add_bot_permission_report(context: ContextTypes.DEFAULT_TYPE, chat_id: int, report: list[str]) -> None:
@@ -1081,28 +1083,28 @@ async def add_bot_permission_report(context: ContextTypes.DEFAULT_TYPE, chat_id:
         member = await context.bot.get_chat_member(chat_id, context.bot.id)
     except TelegramError:
         logger.info("Could not read bot permissions in chat %s", chat_id, exc_info=True)
-        report.append("Bot permissions: could not inspect.")
+        report.append("Permisos del bot: no pude inspeccionarlos.")
         return
 
     is_bot_admin = member.status in {"administrator", "creator", "owner"}
-    report.append(f"Bot admin: {'yes' if is_bot_admin else 'no'}")
+    report.append(f"Bot admin: {'sí' if is_bot_admin else 'no'}")
     if is_bot_admin:
         manage_topics = bool(getattr(member, "can_manage_topics", False))
         pin_messages = bool(getattr(member, "can_pin_messages", False))
         change_info = bool(getattr(member, "can_change_info", False))
-        report.append(f"Manage Topics: {'yes' if manage_topics else 'no'}")
-        report.append(f"Pin Messages: {'yes' if pin_messages else 'no'}")
-        report.append(f"Change Info: {'yes' if change_info else 'no'}")
+        report.append(f"Gestionar topics: {'sí' if manage_topics else 'no'}")
+        report.append(f"Fijar mensajes: {'sí' if pin_messages else 'no'}")
+        report.append(f"Cambiar info del grupo: {'sí' if change_info else 'no'}")
 
 
 async def update_group_description(context: ContextTypes.DEFAULT_TYPE, chat_id: int, report: list[str]) -> None:
-    description = "Riftline GM table. Use /help to play, /join to enter, /character to create a character, and /gm to talk to the GM."
+    description = "Mesa Riftline GM. Usa /help para jugar, /join para entrar, /character para crear personaje y /gm para hablar con el GM."
     try:
         await context.bot.set_chat_description(chat_id=chat_id, description=description)
-        report.append("Description: updated.")
+        report.append("Descripción: actualizada.")
     except TelegramError:
         logger.info("Could not update chat description for chat %s", chat_id, exc_info=True)
-        report.append("Description: skipped. Grant Change Info permission if you want the bot to manage it.")
+        report.append("Descripción: omitida. Da permiso de Cambiar info si quieres que el bot la maneje.")
 
 
 async def ensure_group_topic(
@@ -1116,14 +1118,22 @@ async def ensure_group_topic(
 ) -> int | None:
     existing = store.get_group_topic(chat_id, topic_key)
     if existing:
-        report.append(f"Topic: reused {existing['name']}.")
+        existing_name = str(existing["name"])
+        if existing_name != name:
+            try:
+                await context.bot.edit_forum_topic(chat_id=chat_id, message_thread_id=int(existing["message_thread_id"]), name=name)
+                store.upsert_group_topic(chat_id, topic_key=topic_key, message_thread_id=int(existing["message_thread_id"]), name=name)
+                existing_name = name
+            except TelegramError:
+                logger.info("Could not rename group topic %s in chat %s", topic_key, chat_id, exc_info=True)
+        report.append(f"Topic: reutilizado {existing_name}.")
         return int(existing["message_thread_id"])
 
     try:
         topic = await context.bot.create_forum_topic(chat_id=chat_id, name=name)
     except TelegramError:
         logger.exception("Failed to create group topic %s in chat %s", topic_key, chat_id)
-        report.append(f"Topic: could not create {name}. Check Manage Topics permission.")
+        report.append(f"Topic: no pude crear {name}. Revisa el permiso Gestionar topics.")
         return None
 
     store.upsert_group_topic(
@@ -1132,7 +1142,7 @@ async def ensure_group_topic(
         message_thread_id=topic.message_thread_id,
         name=topic.name or name,
     )
-    report.append(f"Topic: created {topic.name or name}.")
+    report.append(f"Topic: creado {topic.name or name}.")
     try:
         await context.bot.send_message(
             chat_id=chat_id,
@@ -1142,7 +1152,7 @@ async def ensure_group_topic(
         )
     except TelegramError:
         logger.info("Could not send intro to topic %s in chat %s", topic_key, chat_id, exc_info=True)
-        report.append(f"Topic intro: skipped for {topic.name or name}.")
+        report.append(f"Intro de topic: omitida para {topic.name or name}.")
     return topic.message_thread_id
 
 
@@ -1154,49 +1164,49 @@ async def pin_message_if_possible(
 ) -> None:
     try:
         await context.bot.pin_chat_message(chat_id=chat_id, message_id=message_id, disable_notification=True)
-        report.append("Pinned guide: done.")
+        report.append("Guía fijada: listo.")
     except TelegramError:
         logger.info("Could not pin setup guide in chat %s", chat_id, exc_info=True)
-        report.append("Pinned guide: skipped. Grant Pin Messages permission if you want the bot to pin it.")
+        report.append("Guía fijada: omitida. Da permiso de Fijar mensajes si quieres que el bot la fije.")
 
 
 def format_lobby_text(campaign: Campaign) -> str:
     profile = profile_or_default(campaign.game_profile)
     return (
-        "Riftline GM table guide\n\n"
-        f"Game: {profile.label}\n"
-        f"Language: {language_label(campaign.language)}\n"
-        f"Tone: {content_label(campaign.content_preset)}\n\n"
-        "New here:\n"
-        "1. Press Join crew.\n"
-        "2. Press Create character. The bot opens your own character topic.\n"
-        "3. Use /gm or reply to the GM when you want to act in a scene.\n"
-        "4. Use /roll d10+7 for quick checks.\n\n"
-        "Admins can use /settings, /profile, /model, /session_start, and /setup_group."
+        "Guía de la mesa Riftline GM\n\n"
+        f"Juego: {profile.label}\n"
+        f"Idioma: {language_label(campaign.language)}\n"
+        f"Tono: {content_label(campaign.content_preset)}\n\n"
+        "Si eres nuevo:\n"
+        "1. Toca Unirme al crew.\n"
+        "2. Toca Crear personaje. El bot abre tu propio topic de personaje.\n"
+        "3. Usa /gm o responde al GM cuando quieras actuar en una escena.\n"
+        "4. Usa /roll d10+7 para tiradas rápidas.\n\n"
+        "Admins: /settings, /profile, /model, /session_start y /setup_group."
     )
 
 
 def format_help_text(campaign: Campaign) -> str:
     profile = profile_or_default(campaign.game_profile)
     return (
-        "How to play with Riftline GM\n\n"
-        f"Current game: {profile.label}\n"
-        f"Language: {language_label(campaign.language)}\n\n"
-        "Player basics:\n"
-        "/join - enter the crew\n"
-        "/character - create your character in your own topic\n"
-        "/gm <action> - tell the GM what you do\n"
-        "/roll d10+7 - roll dice\n"
-        "/sheet - see how to patch your light sheet\n"
-        "/players - see the crew\n"
-        "/summary - catch up on the story\n\n"
-        "Tip: in character topics, just write naturally. If the bot does not answer, reply to its message or mention it."
+        "Cómo jugar con Riftline GM\n\n"
+        f"Juego actual: {profile.label}\n"
+        f"Idioma: {language_label(campaign.language)}\n\n"
+        "Básicos para jugadores:\n"
+        "/join - entrar al crew\n"
+        "/character - crear tu personaje en tu propio topic\n"
+        "/gm <acción> - decirle al GM qué haces\n"
+        "/roll d10+7 - tirar dados\n"
+        "/sheet - ver cómo ajustar tu ficha ligera\n"
+        "/players - ver el crew\n"
+        "/summary - ponerte al día con la historia\n\n"
+        "Tip: en topics de personaje, escribe natural. Si el bot no responde, respóndele a su mensaje o menciónalo."
     )
 
 
 def format_setup_report(report: list[str], topics: list[str]) -> str:
-    topic_text = ", ".join(topics) if topics else "none"
-    return "Setup complete.\n\n" + "\n".join(f"- {line}" for line in report) + f"\n- Topics ready: {topic_text}"
+    topic_text = ", ".join(topics) if topics else "ninguno"
+    return "Setup listo.\n\n" + "\n".join(f"- {line}" for line in report) + f"\n- Topics listos: {topic_text}"
 
 
 def ensure_campaign(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Campaign:
@@ -1221,7 +1231,7 @@ async def ensure_player_for_character(update: Update, context: ContextTypes.DEFA
         return player
 
     if store.count_active_players(campaign.chat_id) >= config.max_players:
-        await update.effective_message.reply_text(f"La mesa ya tiene el máximo configurado: {config.max_players} players.")
+        await update.effective_message.reply_text(f"La mesa ya tiene el máximo configurado: {config.max_players} jugadores.")
         return None
 
     return store.upsert_player(
@@ -1263,35 +1273,36 @@ async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
 
 
 def format_settings(campaign: Campaign, config: Config) -> str:
-    active = "active" if campaign.active else "paused"
+    active = "activa" if campaign.active else "pausada"
     profile = profile_or_default(campaign.game_profile)
     return (
-        f"Session: {active}\n"
-        f"Profile: {profile.label}\n"
-        f"Language: {language_label(campaign.language)}\n"
-        f"Tone: {content_label(campaign.content_preset)}\n"
-        f"Text model: {campaign.text_model or config.openrouter_text_model}\n"
-        f"Image model: {campaign.image_model or config.openrouter_image_model}"
+        f"Sesión: {active}\n"
+        f"Perfil: {profile.label}\n"
+        f"Idioma: {language_label(campaign.language)}\n"
+        f"Tono: {content_label(campaign.content_preset)}\n"
+        f"Modelo de texto: {campaign.text_model or config.openrouter_text_model}\n"
+        f"Modelo de imagen: {campaign.image_model or config.openrouter_image_model}"
     )
 
 
 def format_players(players: list[Player]) -> str:
     if not players:
-        return "No hay players activos. Usa /join."
+        return "No hay jugadores activos. Usa /join."
     return "Crew activo:\n" + "\n".join(f"- {format_player(player)}" for player in players)
 
 
 def format_player(player: Player) -> str:
     name = player.handle or player.display_name
-    bits = [name, player.experience_mode]
+    mode = "nuevo" if player.experience_mode == "newbie" else "con experiencia"
+    bits = [name, mode]
     if player.role:
         bits.append(player.role)
     if player.hp is not None:
         bits.append(f"HP {player.hp}")
     if player.humanity is not None:
-        bits.append(f"Humanity {player.humanity}")
+        bits.append(f"Humanidad {player.humanity}")
     if player.gear:
-        bits.append(f"Gear: {player.gear}")
+        bits.append(f"Equipo: {player.gear}")
     if player.cyberware:
         bits.append(f"Cyberware: {player.cyberware}")
     return " | ".join(bits)
