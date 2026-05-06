@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from riftline_gm.i18n import CONTENT_PRESETS, LANGUAGE_OPTIONS
 from riftline_gm.models import Campaign, Player
-from riftline_gm.profiles import profile_or_default
+from riftline_gm.profiles import profile_label, profile_or_default
 
 
 def build_system_prompt(campaign: Campaign, players: list[Player]) -> str:
@@ -19,7 +19,7 @@ Use original wording. Do not quote or reproduce copyrighted rulebook text, table
 You are not a complete official rules engine; make concise rulings and keep play moving.
 
 Game profile:
-{profile.label}
+{profile_label(profile.key, campaign.language)}
 {profile.prompt}
 
 Language:
@@ -32,6 +32,7 @@ Avoid content that breaks provider or platform policy. When in doubt, imply, cut
 
 Table style:
 - Make the campaign feel specific to the selected profile, not generic.
+- Use plain Telegram text. Do not use Markdown markers such as **bold**, __underline__, backticks, or code fences.
 - Favor danger, relationships, factions, debt, consequences, and hard choices.
 - Spotlight turns during tense scenes and combat.
 - Short, playable replies. End with a clear prompt, choice, or consequence.

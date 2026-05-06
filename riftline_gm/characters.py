@@ -6,7 +6,7 @@ from typing import Any
 
 from riftline_gm.i18n import CONTENT_PRESETS, LANGUAGE_OPTIONS
 from riftline_gm.models import Campaign, CharacterDraft, Player
-from riftline_gm.profiles import profile_or_default
+from riftline_gm.profiles import profile_label, profile_or_default
 
 
 MINIMUM_FIELDS = ("handle", "concept", "role")
@@ -71,7 +71,7 @@ Do not use fixed classes, official rulebook text, copyrighted stat blocks, or pr
 Ask one short, useful question at a time. Adapt to the player's answers and taste.
 
 Campaign profile:
-{profile.label}
+{profile_label(profile.key, campaign.language)}
 {profile.prompt}
 
 Language:

@@ -4,7 +4,7 @@ from riftline_gm.i18n import LANGUAGE_OPTIONS
 from riftline_gm.keyboards import help_keyboard, language_keyboard, lobby_keyboard, profile_keyboard
 from riftline_gm.openrouter import OpenRouterClient
 from riftline_gm.profiles import GAME_PROFILES
-from riftline_gm.telegram_bot import GROUP_COMMANDS, callback, format_diagnostics_report, parse_sheet_payload
+from riftline_gm.telegram_bot import GROUP_COMMANDS, callback, clean_telegram_text, format_diagnostics_report, parse_sheet_payload
 
 
 def test_parse_sheet_payload_accepts_semicolon_pairs():
@@ -33,6 +33,14 @@ def test_profile_keyboard_contains_all_profiles():
     assert callback_data == {f"profile:{key}" for key in GAME_PROFILES}
 
 
+def test_profile_keyboard_localizes_spanish_labels():
+    markup = profile_keyboard("es_latam_keep_terms")
+    labels = {button.text for row in markup.inline_keyboard for button in row}
+
+    assert "Grupo de aventura fantástica" in labels
+    assert "Crew de space opera" in labels
+
+
 def test_lobby_and_help_keyboards_expose_guided_actions():
     lobby_buttons = [button for row in lobby_keyboard().inline_keyboard for button in row]
     help_buttons = [button for row in help_keyboard().inline_keyboard for button in row]
@@ -58,6 +66,10 @@ def test_format_diagnostics_report_is_scannable():
 
     assert "- SQLite: ok" in report
     assert "- OpenRouter texto: ok" in report
+
+
+def test_clean_telegram_text_removes_markdown_markers():
+    assert clean_telegram_text("Una **barra** con `neon`") == "Una barra con neon"
 
 
 async def test_language_callback_updates_campaign(tmp_path):

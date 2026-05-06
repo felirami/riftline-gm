@@ -4,7 +4,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMa
 
 from riftline_gm.i18n import CONTENT_PRESETS, content_label, language_label
 from riftline_gm.models import Campaign, CharacterDraft, ImageRequest
-from riftline_gm.profiles import GAME_PROFILES, profile_or_default
+from riftline_gm.profiles import GAME_PROFILES, profile_label, profile_short_name
 
 
 def quick_keyboard() -> ReplyKeyboardMarkup:
@@ -46,17 +46,16 @@ def content_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def profile_keyboard() -> InlineKeyboardMarkup:
+def profile_keyboard(language: str | None = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        [[InlineKeyboardButton(profile.label, callback_data=f"profile:{key}")] for key, profile in GAME_PROFILES.items()]
+        [[InlineKeyboardButton(profile_label(key, language), callback_data=f"profile:{key}")] for key in GAME_PROFILES]
     )
 
 
 def settings_keyboard(campaign: Campaign) -> InlineKeyboardMarkup:
-    profile = profile_or_default(campaign.game_profile)
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton(f"Perfil: {profile.short_name}", callback_data="menu:profile")],
+            [InlineKeyboardButton(f"Perfil: {profile_short_name(campaign.game_profile, campaign.language)}", callback_data="menu:profile")],
             [InlineKeyboardButton(f"Idioma: {language_label(campaign.language)}", callback_data="menu:language")],
             [InlineKeyboardButton(f"Tono: {content_label(campaign.content_preset)}", callback_data="menu:content")],
             [InlineKeyboardButton("Pausar sesión", callback_data="admin:pause")],

@@ -81,7 +81,55 @@ GAME_PROFILES: dict[str, GameProfile] = {
 
 DEFAULT_PROFILE = "cyberpunk_2077"
 
+PROFILE_LOCALIZATION: dict[str, dict[str, dict[str, str]]] = {
+    "es": {
+        "cyberpunk_2077": {
+            "label": "Crew callejero Cyberpunk 2077",
+            "short_name": "Cyberpunk",
+            "image_style": (
+                "escena cyberpunk de 2077 para tabletop RPG, neon noir, calles mojadas, cromo, "
+                "presión megacorp, arte de escena cinematográfico"
+            ),
+        },
+        "generic_fantasy": {
+            "label": "Grupo de aventura fantástica",
+            "short_name": "Fantasía",
+            "image_style": "escena de fantasía para tabletop RPG, iluminación dramática, party aventurera, detalle pictórico",
+        },
+        "space_opera": {
+            "label": "Crew de space opera",
+            "short_name": "Space opera",
+            "image_style": "escena de space opera para tabletop RPG, crew de nave, mundos alienígenas, iluminación sci-fi cinematográfica",
+        },
+        "modern_horror": {
+            "label": "Investigación de horror moderno",
+            "short_name": "Horror moderno",
+            "image_style": "escena de horror moderno para tabletop RPG, realismo inquietante, investigación, sombras, tensión cinematográfica",
+        },
+    }
+}
+
 
 def profile_or_default(profile_key: str | None) -> GameProfile:
     return GAME_PROFILES.get(profile_key or DEFAULT_PROFILE, GAME_PROFILES[DEFAULT_PROFILE])
 
+
+def profile_label(profile_key: str | None, language: str | None = None) -> str:
+    profile = profile_or_default(profile_key)
+    return _localized(profile.key, "label", language) or profile.label
+
+
+def profile_short_name(profile_key: str | None, language: str | None = None) -> str:
+    profile = profile_or_default(profile_key)
+    return _localized(profile.key, "short_name", language) or profile.short_name
+
+
+def profile_image_style(profile_key: str | None, language: str | None = None) -> str:
+    profile = profile_or_default(profile_key)
+    return _localized(profile.key, "image_style", language) or profile.image_style
+
+
+def _localized(profile_key: str, field: str, language: str | None) -> str | None:
+    if not language or not language.startswith("es_"):
+        return None
+    return PROFILE_LOCALIZATION.get("es", {}).get(profile_key, {}).get(field)

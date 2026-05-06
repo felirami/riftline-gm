@@ -82,12 +82,19 @@ class OpenRouterClient:
                 "role": "system",
                 "content": (
                     "Rewrite user image requests into one concise image-generation prompt for a tabletop RPG GM. "
-                    "Keep it vivid, visual, safe for provider policy, and do not add copyrighted character likenesses."
+                    "Keep it vivid, visual, safe for provider policy, and do not add copyrighted character likenesses. "
+                    "Write only the final image prompt. Follow the requested campaign language; do not default to English "
+                    "unless the language instruction asks for it."
                 ),
             },
             {
                 "role": "user",
-                "content": f"{language_instruction}\nGame profile visual direction: {profile_instruction}\nUser request: {original_prompt}",
+                "content": (
+                    f"Campaign language/style: {language_instruction}\n"
+                    "The final image prompt itself must follow that language/style.\n"
+                    f"Game profile visual direction: {profile_instruction}\n"
+                    f"User request: {original_prompt}"
+                ),
             },
         ]
         try:

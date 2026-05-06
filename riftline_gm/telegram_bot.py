@@ -49,7 +49,7 @@ from riftline_gm.keyboards import (
 from riftline_gm.models import Campaign, CharacterDraft, Player
 from riftline_gm.openrouter import OpenRouterClient
 from riftline_gm.prompts import build_chat_messages, build_summary_messages
-from riftline_gm.profiles import GAME_PROFILES, profile_or_default
+from riftline_gm.profiles import GAME_PROFILES, profile_image_style, profile_label
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +210,7 @@ async def diagnostics(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     report: list[str] = ["Diagnóstico Riftline GM"]
     report.append(f"Chat: {chat.title or chat.id}")
-    report.append(f"Perfil: {profile_or_default(campaign.game_profile).label}")
+    report.append(f"Perfil: {profile_label(campaign.game_profile, campaign.language)}")
     report.append(f"Idioma: {language_label(campaign.language)}")
     report.append(f"Sesión: {'activa' if campaign.active else 'pausada'}")
     await add_bot_permission_report(context, campaign.chat_id, report)
@@ -260,12 +260,12 @@ async def session_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         reply_markup=quick_keyboard(),
     )
     await update.effective_message.reply_text(
-        "Primero elige perfil de juego. Cyberpunk viene como punto de partida, pero Riftline GM puede correr otras mesas.",
-        reply_markup=profile_keyboard(),
-    )
-    await update.effective_message.reply_text(
-        "Después elige idioma y estilo de traducción para esta campaña.",
-        reply_markup=language_keyboard(),
+        "Configuración activa:\n"
+        f"- Perfil: {profile_label(campaign.game_profile, campaign.language)}\n"
+        f"- Idioma: {language_label(campaign.language)}\n"
+        f"- Tono: {content_label(campaign.content_preset)}\n\n"
+        "Si quieres cambiar algo, abre /settings.",
+        reply_markup=settings_keyboard(campaign),
     )
     logger.info("Session started for chat %s with max_players=%s", campaign.chat_id, config.max_players)
 
@@ -448,8 +448,8 @@ async def profile_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     args = context.args
     if not args:
         await update.effective_message.reply_text(
-            f"Perfil actual: {profile_or_default(campaign.game_profile).label}\nElige uno:",
-            reply_markup=profile_keyboard(),
+            f"Perfil actual: {profile_label(campaign.game_profile, campaign.language)}\nElige uno:",
+            reply_markup=profile_keyboard(campaign.language),
         )
         return
     profile_key = args[0].strip()
@@ -459,7 +459,7 @@ async def profile_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         return
     store.update_campaign(campaign.chat_id, game_profile=profile_key)
-    await update.effective_message.reply_text(f"Perfil elegido: {GAME_PROFILES[profile_key].label}")
+    await update.effective_message.reply_text(f"Perfil elegido: {profile_label(profile_key, campaign.language)}")
 
 
 async def sheet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -558,12 +558,12 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 await query.message.reply_text("Perfil desconocido.")
                 return
             store.update_campaign(campaign.chat_id, game_profile=profile_key)
-            await query.message.reply_text(f"Perfil elegido: {GAME_PROFILES[profile_key].label}")
+            await query.message.reply_text(f"Perfil elegido: {profile_label(profile_key, campaign.language)}")
             return
         if data == "menu:profile":
             await query.answer()
             if await require_admin(update, context, query_only=True):
-                await query.message.reply_text("Elige perfil de juego.", reply_markup=profile_keyboard())
+                await query.message.reply_text("Elige perfil de juego.", reply_markup=profile_keyboard(campaign.language))
             return
         if data == "menu:help":
             await query.answer()
@@ -986,6 +986,7 @@ async def process_gm_text(update: Update, context: ContextTypes.DEFAULT_TYPE, te
 
     store.add_message(campaign.chat_id, role="user", content=f"{display}: {text}", user_id=player.user_id)
     result = await openrouter.chat(messages, model=campaign.text_model or config.openrouter_text_model)
+    reply_text = clean_telegram_text(result.text)
     store.add_cost_log(
         chat_id=campaign.chat_id,
         model=result.model,
@@ -994,10 +995,10 @@ async def process_gm_text(update: Update, context: ContextTypes.DEFAULT_TYPE, te
         completion_tokens=result.completion_tokens,
         total_cost=result.total_cost,
     )
-    store.add_message(campaign.chat_id, role="gm", content=result.text)
+    store.add_message(campaign.chat_id, role="gm", content=reply_text)
     await maybe_refresh_summary(campaign.chat_id, context)
     updated_campaign = store.get_campaign(campaign.chat_id)
-    await update.effective_message.reply_text(result.text, reply_markup=gm_keyboard(updated_campaign))
+    await update.effective_message.reply_text(reply_text, reply_markup=gm_keyboard(updated_campaign))
 
 
 async def send_roll(update: Update, context: ContextTypes.DEFAULT_TYPE, expression: str) -> None:
@@ -1031,10 +1032,9 @@ async def create_image_request(update: Update, context: ContextTypes.DEFAULT_TYP
 
     await context.bot.send_chat_action(chat_id=campaign.chat_id, action=ChatAction.TYPING)
     language_instruction = LANGUAGE_OPTIONS.get(campaign.language, LANGUAGE_OPTIONS["es_latam_keep_terms"])["prompt"]
-    profile = profile_or_default(campaign.game_profile)
     draft = await openrouter.draft_image_prompt(
         language_instruction=language_instruction,
-        profile_instruction=profile.image_style,
+        profile_instruction=profile_image_style(campaign.game_profile, campaign.language),
         original_prompt=prompt,
         model=campaign.text_model or config.openrouter_text_model,
     )
@@ -1180,6 +1180,15 @@ async def ensure_group_topic(
             except TelegramError:
                 logger.info("Could not rename group topic %s in chat %s", topic_key, chat_id, exc_info=True)
         report.append(f"Topic: reutilizado {existing_name}.")
+        await send_group_topic_intro(
+            context,
+            chat_id=chat_id,
+            thread_id=int(existing["message_thread_id"]),
+            topic_key=topic_key,
+            intro=f"Guía actualizada: {intro}",
+            topic_name=existing_name,
+            report=report,
+        )
         return int(existing["message_thread_id"])
 
     try:
@@ -1196,17 +1205,38 @@ async def ensure_group_topic(
         name=topic.name or name,
     )
     report.append(f"Topic: creado {topic.name or name}.")
+    await send_group_topic_intro(
+        context,
+        chat_id=chat_id,
+        thread_id=topic.message_thread_id,
+        topic_key=topic_key,
+        intro=intro,
+        topic_name=topic.name or name,
+        report=report,
+    )
+    return topic.message_thread_id
+
+
+async def send_group_topic_intro(
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    chat_id: int,
+    thread_id: int,
+    topic_key: str,
+    intro: str,
+    topic_name: str,
+    report: list[str],
+) -> None:
     try:
         await context.bot.send_message(
             chat_id=chat_id,
-            message_thread_id=topic.message_thread_id,
+            message_thread_id=thread_id,
             text=intro,
             reply_markup=lobby_keyboard() if topic_key == "start" else None,
         )
     except TelegramError:
         logger.info("Could not send intro to topic %s in chat %s", topic_key, chat_id, exc_info=True)
-        report.append(f"Intro de topic: omitida para {topic.name or name}.")
-    return topic.message_thread_id
+        report.append(f"Intro de topic: omitida para {topic_name}.")
 
 
 async def run_topic_diagnostic(
@@ -1268,10 +1298,9 @@ async def pin_message_if_possible(
 
 
 def format_lobby_text(campaign: Campaign) -> str:
-    profile = profile_or_default(campaign.game_profile)
     return (
         "Guía de la mesa Riftline GM\n\n"
-        f"Juego: {profile.label}\n"
+        f"Juego: {profile_label(campaign.game_profile, campaign.language)}\n"
         f"Idioma: {language_label(campaign.language)}\n"
         f"Tono: {content_label(campaign.content_preset)}\n\n"
         "Si eres nuevo:\n"
@@ -1284,10 +1313,9 @@ def format_lobby_text(campaign: Campaign) -> str:
 
 
 def format_help_text(campaign: Campaign) -> str:
-    profile = profile_or_default(campaign.game_profile)
     return (
         "Cómo jugar con Riftline GM\n\n"
-        f"Juego actual: {profile.label}\n"
+        f"Juego actual: {profile_label(campaign.game_profile, campaign.language)}\n"
         f"Idioma: {language_label(campaign.language)}\n\n"
         "Básicos para jugadores:\n"
         "/join - entrar al crew\n"
@@ -1308,6 +1336,16 @@ def format_setup_report(report: list[str], topics: list[str]) -> str:
 
 def format_diagnostics_report(report: list[str]) -> str:
     return "\n".join(f"- {line}" for line in report)
+
+
+def clean_telegram_text(text: str) -> str:
+    return (
+        text.replace("**", "")
+        .replace("__", "")
+        .replace("```", "")
+        .replace("`", "")
+        .strip()
+    )
 
 
 def ensure_campaign(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Campaign:
@@ -1375,10 +1413,9 @@ async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
 
 def format_settings(campaign: Campaign, config: Config) -> str:
     active = "activa" if campaign.active else "pausada"
-    profile = profile_or_default(campaign.game_profile)
     return (
         f"Sesión: {active}\n"
-        f"Perfil: {profile.label}\n"
+        f"Perfil: {profile_label(campaign.game_profile, campaign.language)}\n"
         f"Idioma: {language_label(campaign.language)}\n"
         f"Tono: {content_label(campaign.content_preset)}\n"
         f"Modelo de texto: {campaign.text_model or config.openrouter_text_model}\n"
